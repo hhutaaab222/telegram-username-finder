@@ -10,9 +10,7 @@ from utils import generate_username, is_liquid_username
 logger = logging.getLogger(__name__)
 
 class SearchEngine(threading.Thread):
-    """
-    Поток, выполняющий генерацию и проверку username через Telegram API.
-    """
+   
     def __init__(self, api_id, api_hash, params, on_result, on_status, on_error):
         super().__init__(daemon=True)
         self.api_id = api_id
