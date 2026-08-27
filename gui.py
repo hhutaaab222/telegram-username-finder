@@ -8,7 +8,7 @@ from searcher import SearchEngine
 
 logger = logging.getLogger(__name__)
 
-# Цветовая схема
+
 BG_COLOR = "#1e1e1e"
 SURFACE_COLOR = "#2d2d2d"
 FG_COLOR = "#e0e0e0"
@@ -28,12 +28,10 @@ TREE_FG = "#e0e0e0"
 TREE_SELECTED = "#094771"
 HEADER_BG = "#2d2d2d"
 HEADER_FG = "#ffffff"
-LIQUID_COLOR = "#ffd700"  # золотой для ликвидных
+LIQUID_COLOR = "#ffd700"  
 
 class RoundedButton(tk.Canvas):
-    """
-    Кастомная кнопка с скругленными углами и плавной анимацией при наведении.
-    """
+   
     def __init__(self, parent, text, command=None, width=140, height=50,
                  corner_radius=15, bg=BUTTON_BG, fg=BUTTON_FG,
                  active_bg=BUTTON_ACTIVE_BG, active_fg=BUTTON_ACTIVE_FG,
@@ -155,7 +153,7 @@ class App:
 
         self.free_list = []
         self.deleted_list = []
-        self.liquid_free_list = []  # список ликвидных свободных
+        self.liquid_free_list = []  
 
         self.search_thread = None
 
@@ -195,17 +193,17 @@ class App:
                         font=('Segoe UI', 10, 'bold'))
 
     def _create_widgets(self):
-        # Верхняя панель с заголовком
+       
         header_frame = tk.Frame(self.root, bg=BG_COLOR)
         header_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
         tk.Label(header_frame, text="Telegram Username Finder", font=('Segoe UI', 16, 'bold'),
                  bg=BG_COLOR, fg=ACCENT_COLOR).pack(side=tk.LEFT)
 
-        # Основной контейнер
+        
         main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        # Левая панель: настройки
+      
         settings_frame = ttk.Frame(main_paned, width=280)
         main_paned.add(settings_frame, weight=0)
 
@@ -400,7 +398,7 @@ class App:
                     _, username, status, is_liquid = msg
                     if status == 'free':
                         liquid_text = "Да" if is_liquid else "Нет"
-                        # Вставляем с тегом для подсветки ликвидных
+                       
                         tags = ('liquid',) if is_liquid else ()
                         self.tree.insert('', tk.END, values=(username, 'Свободен', liquid_text), tags=tags)
                         self.free_list.append(username)
@@ -425,7 +423,7 @@ class App:
         finally:
             self.root.after(100, self._process_queue)
 
-        # Настройка тега для подсветки ликвидных строк
+      
         self.tree.tag_configure('liquid', background='#3a3a00')  # тёмно-жёлтый фон
 
     def save_results(self):
