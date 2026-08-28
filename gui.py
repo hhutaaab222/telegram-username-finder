@@ -8,7 +8,7 @@ from searcher import SearchEngine
 
 logger = logging.getLogger(__name__)
 
-
+# Цветовая схема
 BG_COLOR = "#1e1e1e"
 SURFACE_COLOR = "#2d2d2d"
 FG_COLOR = "#e0e0e0"
@@ -28,10 +28,12 @@ TREE_FG = "#e0e0e0"
 TREE_SELECTED = "#094771"
 HEADER_BG = "#2d2d2d"
 HEADER_FG = "#ffffff"
-LIQUID_COLOR = "#ffd700"  
+LIQUID_COLOR = "#ffd700"
 
 class RoundedButton(tk.Canvas):
-   
+    """
+    Кастомная кнопка с скругленными углами и плавной анимацией при наведении.
+    """
     def __init__(self, parent, text, command=None, width=140, height=50,
                  corner_radius=15, bg=BUTTON_BG, fg=BUTTON_FG,
                  active_bg=BUTTON_ACTIVE_BG, active_fg=BUTTON_ACTIVE_FG,
@@ -150,10 +152,11 @@ class App:
         self.length_var = tk.IntVar(value=8)
         self.allow_digits_var = tk.BooleanVar(value=False)
         self.allow_uppercase_var = tk.BooleanVar(value=False)
+        self.delay_var = tk.DoubleVar(value=1.0)  # задержка по умолчанию 1 сек
 
         self.free_list = []
         self.deleted_list = []
-        self.liquid_free_list = []  
+        self.liquid_free_list = []
 
         self.search_thread = None
 
@@ -193,28 +196,31 @@ class App:
                         font=('Segoe UI', 10, 'bold'))
 
     def _create_widgets(self):
-       
+        # Верхняя панель с заголовком
         header_frame = tk.Frame(self.root, bg=BG_COLOR)
         header_frame.pack(fill=tk.X, padx=10, pady=(10, 5))
         tk.Label(header_frame, text="Telegram Username Finder", font=('Segoe UI', 16, 'bold'),
                  bg=BG_COLOR, fg=ACCENT_COLOR).pack(side=tk.LEFT)
 
-        
+        # Основной контейнер
         main_paned = ttk.PanedWindow(self.root, orient=tk.HORIZONTAL)
         main_paned.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-      
+        # ==================== Левая панель: настройки ====================
         settings_frame = ttk.Frame(main_paned, width=280)
         main_paned.add(settings_frame, weight=0)
 
         ttk.Label(settings_frame, text="Настройки", font=('Segoe UI', 12, 'bold')).pack(pady=(5, 10))
 
+        # API ID
         ttk.Label(settings_frame, text="API ID:").pack(anchor=tk.W, padx=5, pady=(5, 0))
         ttk.Entry(settings_frame, textvariable=self.api_id_var).pack(fill=tk.X, padx=5, pady=(0, 5))
 
+        # API Hash
         ttk.Label(settings_frame, text="API Hash:").pack(anchor=tk.W, padx=5, pady=(5, 0))
         ttk.Entry(settings_frame, textvariable=self.api_hash_var).pack(fill=tk.X, padx=5, pady=(0, 5))
 
+        # Длина username
         ttk.Label(settings_frame, text="Длина username:").pack(anchor=tk.W, padx=5, pady=(5, 0))
         length_frame = ttk.Frame(settings_frame)
         length_frame.pack(fill=tk.X, padx=5, pady=5)
@@ -224,11 +230,23 @@ class App:
         self.length_value_label = ttk.Label(length_frame, text=str(self.length_var.get()), width=3)
         self.length_value_label.pack(side=tk.RIGHT, padx=(5, 0))
 
+        # Задержка между запросами
+        ttk.Label(settings_frame, text="Задержка (сек):").pack(anchor=tk.W, padx=5, pady=(5, 0))
+        delay_frame = ttk.Frame(settings_frame)
+        delay_frame.pack(fill=tk.X, padx=5, pady=5)
+        delay_scale = ttk.Scale(delay_frame, from_=0.5, to=5.0, orient=tk.HORIZONTAL,
+                                variable=self.delay_var, command=self._on_delay_change)
+        delay_scale.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self.delay_value_label = ttk.Label(delay_frame, text=f"{self.delay_var.get():.1f}", width=3)
+        self.delay_value_label.pack(side=tk.RIGHT, padx=(5, 0))
+
+        # Чекбоксы
         ttk.Checkbutton(settings_frame, text="Разрешить цифры",
                         variable=self.allow_digits_var).pack(anchor=tk.W, padx=5, pady=5)
         ttk.Checkbutton(settings_frame, text="Разрешить заглавные буквы",
                         variable=self.allow_uppercase_var).pack(anchor=tk.W, padx=5, pady=5)
 
+        # Кнопки
         buttons_frame = ttk.Frame(settings_frame)
         buttons_frame.pack(fill=tk.X, padx=5, pady=10)
 
@@ -254,11 +272,12 @@ class App:
                                          font=('Segoe UI', 11, 'bold'))
         self.save_button.pack(fill=tk.X, pady=10)
 
+        # Краткий статус
         self.status_short_var = tk.StringVar(value="Готов")
         tk.Label(settings_frame, textvariable=self.status_short_var,
                  bg=BG_COLOR, fg="#aaaaaa", font=('Segoe UI', 9)).pack(anchor=tk.W, padx=5, pady=5)
 
-        # Правая панель: результаты в виде таблицы
+        # ==================== Правая панель: результаты ====================
         results_frame = ttk.Frame(main_paned)
         main_paned.add(results_frame, weight=1)
 
@@ -282,6 +301,7 @@ class App:
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
 
+        # Счётчики
         counters_frame = ttk.Frame(results_frame)
         counters_frame.pack(fill=tk.X, pady=5)
         self.free_count_var = tk.StringVar(value="Свободных: 0")
@@ -294,13 +314,20 @@ class App:
         ttk.Label(counters_frame, textvariable=self.liquid_count_var,
                   foreground=LIQUID_COLOR).pack(side=tk.LEFT, padx=5)
 
+        # Нижний статус-бар
         self.status_var = tk.StringVar(value="Готов к работе")
         status_bar = tk.Label(self.root, textvariable=self.status_var, bg=SURFACE_COLOR,
                               fg=FG_COLOR, anchor=tk.W, padx=10, pady=5, font=('Segoe UI', 9))
         status_bar.pack(side=tk.BOTTOM, fill=tk.X)
 
+        # Настройка тега для подсветки ликвидных
+        self.tree.tag_configure('liquid', background='#3a3a00')
+
     def _on_scale_change(self, value):
         self.length_value_label.config(text=str(int(float(value))))
+
+    def _on_delay_change(self, value):
+        self.delay_value_label.config(text=f"{float(value):.1f}")
 
     def _load_config_to_ui(self):
         config = load_config()
@@ -310,6 +337,7 @@ class App:
             self.length_var.set(config.get('default_length', 8))
             self.allow_digits_var.set(config.get('allow_digits', False))
             self.allow_uppercase_var.set(config.get('allow_uppercase', False))
+            self.delay_var.set(config.get('delay', 1.0))
 
     def _save_current_config(self):
         config = {
@@ -317,7 +345,8 @@ class App:
             'api_hash': self.api_hash_var.get(),
             'default_length': self.length_var.get(),
             'allow_digits': self.allow_digits_var.get(),
-            'allow_uppercase': self.allow_uppercase_var.get()
+            'allow_uppercase': self.allow_uppercase_var.get(),
+            'delay': self.delay_var.get()
         }
         save_config(config)
 
@@ -344,11 +373,13 @@ class App:
         params = {
             'length': self.length_var.get(),
             'allow_digits': self.allow_digits_var.get(),
-            'allow_uppercase': self.allow_uppercase_var.get()
+            'allow_uppercase': self.allow_uppercase_var.get(),
+            'delay': self.delay_var.get()
         }
         api_id = int(self.api_id_var.get())
         api_hash = self.api_hash_var.get()
 
+        # Очистка таблицы
         for item in self.tree.get_children():
             self.tree.delete(item)
         self.free_list.clear()
@@ -358,6 +389,7 @@ class App:
         self.deleted_count_var.set("Удалённых: 0")
         self.liquid_count_var.set("Ликвидных свободных: 0")
 
+        # Переключение кнопок
         self.start_button.set_enabled(False)
         self.stop_button.set_enabled(True)
         self.status_var.set("Подключение...")
@@ -398,7 +430,6 @@ class App:
                     _, username, status, is_liquid = msg
                     if status == 'free':
                         liquid_text = "Да" if is_liquid else "Нет"
-                       
                         tags = ('liquid',) if is_liquid else ()
                         self.tree.insert('', tk.END, values=(username, 'Свободен', liquid_text), tags=tags)
                         self.free_list.append(username)
@@ -422,9 +453,6 @@ class App:
             pass
         finally:
             self.root.after(100, self._process_queue)
-
-      
-        self.tree.tag_configure('liquid', background='#3a3a00')  # тёмно-жёлтый фон
 
     def save_results(self):
         if not self.free_list:
