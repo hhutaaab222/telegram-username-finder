@@ -10,12 +10,14 @@ from utils import generate_username, is_liquid_username
 logger = logging.getLogger(__name__)
 
 class SearchEngine(threading.Thread):
-   
+    """
+    Поток, выполняющий генерацию и проверку username через Telegram API.
+    """
     def __init__(self, api_id, api_hash, params, on_result, on_status, on_error):
         super().__init__(daemon=True)
         self.api_id = api_id
         self.api_hash = api_hash
-        self.params = params  # dict: length, allow_digits, allow_uppercase
+        self.params = params  # dict: length, allow_digits, allow_uppercase, delay
         self.on_result = on_result  # callback(username, status, is_liquid)
         self.on_status = on_status  # callback(message)
         self.on_error = on_error    # callback(error_message)
@@ -36,52 +38,71 @@ class SearchEngine(threading.Thread):
             logger.exception("Ошибка в поисковом потоке")
             self.on_error(f"Ошибка: {e}")
         finally:
-            if self.client:
-                self.loop.run_until_complete(self.client.disconnect())
+            # Закрываем цикл, все асинхронные операции завершены
             self.loop.close()
             self.running = False
 
     async def _async_run(self):
         self.client = TelegramClient('session', self.api_id, self.api_hash)
-        await self.client.start()
-        logger.info("Клиент Telegram авторизован")
-        self.on_status("Подключено, начинаем поиск...")
+        try:
+            await self.client.start()
+            logger.info("Клиент Telegram авторизован")
+            self.on_status("Подключено, начинаем поиск...")
 
-        total_checked = 0
-        free_found = 0
-        deleted_found = 0
+            total_checked = 0
+            free_found = 0
+            deleted_found = 0
+            delay = self.params.get('delay', 1.0)
 
-        while self.running:
-            username = generate_username(
-                length=self.params['length'],
-                allow_digits=self.params['allow_digits'],
-                allow_uppercase=self.params['allow_uppercase']
-            )
+            while self.running:
+                username = generate_username(
+                    length=self.params['length'],
+                    allow_digits=self.params['allow_digits'],
+                    allow_uppercase=self.params['allow_uppercase']
+                )
 
-            status = await self._async_check_username(username)
-            total_checked += 1
+                status = await self._async_check_username(username)
+                total_checked += 1
 
-            if status == 'free':
-                free_found += 1
-                liquid = is_liquid_username(username)
-                self.on_result(username, 'free', liquid)
-            elif status == 'deleted':
-                deleted_found += 1
-                liquid = is_liquid_username(username)
-                self.on_result(username, 'deleted', liquid)
+                if status == 'free':
+                    free_found += 1
+                    liquid = is_liquid_username(username)
+                    self.on_result(username, 'free', liquid)
+                elif status == 'deleted':
+                    deleted_found += 1
+                    liquid = is_liquid_username(username)
+                    self.on_result(username, 'deleted', liquid)
+                elif status == 'stop':
+                    self.on_status("Поиск остановлен из-за длительного FloodWait")
+                    break
 
-            status_msg = (f"Проверено: {total_checked}, "
-                          f"свободных: {free_found}, "
-                          f"удалённых: {deleted_found}, "
-                          f"текущий: {username}")
-            self.on_status(status_msg)
+                status_msg = (f"Проверено: {total_checked}, "
+                              f"свободных: {free_found}, "
+                              f"удалённых: {deleted_found}, "
+                              f"текущий: {username}")
+                self.on_status(status_msg)
 
-            await asyncio.sleep(0.7)
+                await self._interruptible_sleep(delay)
 
-        self.on_status(f"Поиск остановлен. Проверено: {total_checked}, "
-                       f"свободных: {free_found}, удалённых: {deleted_found}")
+            self.on_status(f"Поиск остановлен. Проверено: {total_checked}, "
+                           f"свободных: {free_found}, удалённых: {deleted_found}")
+        finally:
+            # Отключаем клиента внутри асинхронного контекста
+            if self.client:
+                await self.client.disconnect()
+                logger.info("Клиент отключён")
+
+    async def _interruptible_sleep(self, seconds):
+        """Спит частями по 0.1 секунды, проверяя флаг running."""
+        end_time = asyncio.get_event_loop().time() + seconds
+        while self.running and asyncio.get_event_loop().time() < end_time:
+            await asyncio.sleep(0.1)
 
     async def _async_check_username(self, username):
+        """
+        Асинхронно проверяет статус username.
+        Возвращает 'free', 'deleted', 'taken' или 'stop' (если FloodWait слишком большой).
+        """
         attempt = 0
         max_attempts = 3
         while attempt < max_attempts:
@@ -94,13 +115,19 @@ class SearchEngine(threading.Thread):
                 return 'free'
             except FloodWaitError as e:
                 logger.warning(f"Flood wait: {e.seconds} секунд")
-                await asyncio.sleep(e.seconds)
+                if e.seconds > 300:
+                    logger.error(f"Слишком долгий FloodWait: {e.seconds} секунд. Останавливаем поиск.")
+                    self.on_error(f"Telegram требует ждать {e.seconds} секунд. Поиск остановлен.")
+                    return 'stop'
+                await self._interruptible_sleep(e.seconds)
+                if not self.running:
+                    return 'stop'
                 continue
             except Exception as e:
                 logger.error(f"Ошибка при проверке {username}: {e}")
                 attempt += 1
                 if attempt < max_attempts:
-                    await asyncio.sleep(2 ** attempt)
+                    await self._interruptible_sleep(2 ** attempt)
                 else:
                     return 'error'
         return 'error'
